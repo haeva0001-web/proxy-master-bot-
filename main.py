@@ -14,6 +14,7 @@ import requests
 from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ParseMode  # ИСПРАВЛЕНИЕ: ParseMode теперь здесь
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
     ContextTypes, MessageHandler, filters
@@ -101,16 +102,96 @@ BUILTIN_SOCKS5_PROXIES = [
 
 # ─── Встроенный резерв: VPN конфиги (VPNBook) ───
 BUILTIN_VPN_CONFIGS = [
-    {"name": "VPNBook US1", "server": "us1.vpnbook.com", "port": "80", "country": "🇺🇸 США", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook US2", "server": "us2.vpnbook.com", "port": "443", "country": "🇺🇸 США", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook CA1", "server": "ca1.vpnbook.com", "port": "80", "country": "🇨🇦 Канада", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook DE1", "server": "de1.vpnbook.com", "port": "80", "country": "🇩🇪 Германия", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook FR1", "server": "fr1.vpnbook.com", "port": "80", "country": "🇫🇷 Франция", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook PL1", "server": "pl1.vpnbook.com", "port": "80", "country": "🇵🇱 Польша", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook EU1", "server": "euro1.vpnbook.com", "port": "443", "country": "🇪🇺 Европа", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook EU2", "server": "euro2.vpnbook.com", "port": "443", "country": "🇪🇺 Европа", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook UK1", "server": "uk1.vpnbook.com", "port": "80", "country": "🇬🇧 Великобритания", "username": "vpnbook", "password": "auto", "proto": "tcp"},
-    {"name": "VPNBook AU1", "server": "au1.vpnbook.com", "port": "80", "country": "🇦🇺 Австралия", "username": "vpnbook", "password": "auto", "proto": "tcp"},
+    {
+        "name": "VPNBook US1",
+        "server": "us1.vpnbook.com",
+        "port": "80",
+        "country": "🇺🇸 США",
+        "username": "vpnbook",
+        "password": "auto",  # обновляется с сайта
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook US2",
+        "server": "us2.vpnbook.com",
+        "port": "443",
+        "country": "🇺🇸 США",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook CA1",
+        "server": "ca1.vpnbook.com",
+        "port": "80",
+        "country": "🇨🇦 Канада",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook DE1",
+        "server": "de1.vpnbook.com",
+        "port": "80",
+        "country": "🇩🇪 Германия",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook FR1",
+        "server": "fr1.vpnbook.com",
+        "port": "80",
+        "country": "🇫🇷 Франция",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook PL1",
+        "server": "pl1.vpnbook.com",
+        "port": "80",
+        "country": "🇵🇱 Польша",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook EU1",
+        "server": "euro1.vpnbook.com",
+        "port": "443",
+        "country": "🇪🇺 Европа",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook EU2",
+        "server": "euro2.vpnbook.com",
+        "port": "443",
+        "country": "🇪🇺 Европа",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook UK1",
+        "server": "uk1.vpnbook.com",
+        "port": "80",
+        "country": "🇬🇧 Великобритания",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
+    {
+        "name": "VPNBook AU1",
+        "server": "au1.vpnbook.com",
+        "port": "80",
+        "country": "🇦🇺 Австралия",
+        "username": "vpnbook",
+        "password": "auto",
+        "proto": "tcp",
+    },
 ]
 
 # ─────────────────────────────────────────────
@@ -122,10 +203,11 @@ class ProxyPool:
         self.http_proxies = list(BUILTIN_HTTP_PROXIES)
         self.socks5_proxies = list(BUILTIN_SOCKS5_PROXIES)
         self.dead_proxies = set()
-        self.proxy_stats = {}
+        self.proxy_stats = {}  # proxy -> {"ping": ms, "last_check": ts, "alive": bool}
         self.lock = threading.Lock()
-        self._vpnbook_password = "5zt6eFm"
+        self._vpnbook_password = "5zt6eFm"  # дефолтный, обновляется парсингом
 
+    # ── Получить случайный живой HTTP-прокси ──
     def get_http_proxy(self):
         with self.lock:
             alive = [p for p in self.http_proxies if p not in self.dead_proxies]
@@ -134,6 +216,7 @@ class ProxyPool:
                 alive = list(self.http_proxies)
             return random.choice(alive) if alive else None
 
+    # ── Получить случайный живой SOCKS5-прокси ──
     def get_socks5_proxy(self):
         with self.lock:
             alive = [p for p in self.socks5_proxies if p not in self.dead_proxies]
@@ -141,19 +224,31 @@ class ProxyPool:
                 alive = list(self.socks5_proxies)
             return random.choice(alive) if alive else None
 
+    # ── Пометить прокси мёртвым ──
     def mark_dead(self, proxy):
         with self.lock:
             self.dead_proxies.add(proxy)
             logger.info(f"Прокси помечен мёртвым: {proxy}")
 
+    # ── Проверить прокси (пинг + смена IP) ──
     def check_proxy(self, proxy_str, proto="http", timeout=5):
         try:
             if proto == "socks5":
-                proxies = {"http": f"socks5://{proxy_str}", "https": f"socks5://{proxy_str}"}
+                proxies = {
+                    "http": f"socks5://{proxy_str}",
+                    "https": f"socks5://{proxy_str}",
+                }
             else:
-                proxies = {"http": f"http://{proxy_str}", "https": f"http://{proxy_str}"}
+                proxies = {
+                    "http": f"http://{proxy_str}",
+                    "https": f"http://{proxy_str}",
+                }
             start = time.time()
-            r = requests.get("http://httpbin.org/ip", proxies=proxies, timeout=timeout)
+            r = requests.get(
+                "http://httpbin.org/ip",
+                proxies=proxies,
+                timeout=timeout
+            )
             ping = int((time.time() - start) * 1000)
             if r.status_code == 200:
                 ip = r.json().get("origin", "unknown")
@@ -170,6 +265,7 @@ class ProxyPool:
         self.mark_dead(proxy_str)
         return False, 9999, None
 
+    # ── Найти лучший HTTP-прокси (минимальный пинг) ──
     def get_best_http_proxy(self):
         candidates = [p for p in self.http_proxies if p not in self.dead_proxies]
         if not candidates:
@@ -177,23 +273,26 @@ class ProxyPool:
         random.shuffle(candidates)
         best = None
         best_ping = 9999
-        for proxy in candidates[:10]:
+        for proxy in candidates[:10]:  # проверяем до 10
             ok, ping, ip = self.check_proxy(proxy)
             if ok and ping < best_ping:
                 best = proxy
                 best_ping = ping
         return best, best_ping
 
+    # ── Добавить новые прокси в пул ──
     def add_proxies(self, new_list, proto="http"):
         with self.lock:
             if proto == "http":
                 before = len(self.http_proxies)
                 self.http_proxies = list(set(self.http_proxies + new_list))
-                logger.info(f"Добавлено {len(self.http_proxies) - before} новых HTTP-прокси. Всего: {len(self.http_proxies)}")
+                added = len(self.http_proxies) - before
+                logger.info(f"Добавлено {added} новых HTTP-прокси. Всего: {len(self.http_proxies)}")
             elif proto == "socks5":
                 before = len(self.socks5_proxies)
                 self.socks5_proxies = list(set(self.socks5_proxies + new_list))
-                logger.info(f"Добавлено {len(self.socks5_proxies) - before} новых SOCKS5-прокси. Всего: {len(self.socks5_proxies)}")
+                added = len(self.socks5_proxies) - before
+                logger.info(f"Добавлено {added} новых SOCKS5-прокси. Всего: {len(self.socks5_proxies)}")
 
     def stats(self):
         return {
@@ -214,6 +313,7 @@ class VPNParser:
         self.vpn_configs = list(BUILTIN_VPN_CONFIGS)
         self.vpnbook_password = "5zt6eFm"
 
+    # ── Парсинг HTTP-прокси через встроенный прокси ──
     def parse_http_proxies(self):
         sources = [
             "https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=5000&country=all&ssl=all&anonymity=all",
@@ -226,7 +326,11 @@ class VPNParser:
         relay_proxy = self.pool.get_http_proxy()
         proxies_dict = None
         if relay_proxy:
-            proxies_dict = {"http": f"http://{relay_proxy}", "https": f"http://{relay_proxy}"}
+            proxies_dict = {
+                "http": f"http://{relay_proxy}",
+                "https": f"http://{relay_proxy}",
+            }
+
         for url in sources:
             try:
                 r = requests.get(url, proxies=proxies_dict, timeout=8)
@@ -240,10 +344,12 @@ class VPNParser:
                     break
             except Exception as e:
                 logger.warning(f"Не удалось спарсить {url}: {e}")
+
         if collected:
             self.pool.add_proxies(collected[:200], proto="http")
         return len(collected)
 
+    # ── Парсинг SOCKS5-прокси ──
     def parse_socks5_proxies(self):
         sources = [
             "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5&timeout=5000",
@@ -254,7 +360,11 @@ class VPNParser:
         relay_proxy = self.pool.get_http_proxy()
         proxies_dict = None
         if relay_proxy:
-            proxies_dict = {"http": f"http://{relay_proxy}", "https": f"http://{relay_proxy}"}
+            proxies_dict = {
+                "http": f"http://{relay_proxy}",
+                "https": f"http://{relay_proxy}",
+            }
+
         for url in sources:
             try:
                 r = requests.get(url, proxies=proxies_dict, timeout=8)
@@ -267,15 +377,20 @@ class VPNParser:
                     break
             except Exception as e:
                 logger.warning(f"Не удалось спарсить SOCKS5 {url}: {e}")
+
         if collected:
             self.pool.add_proxies(collected[:100], proto="socks5")
         return len(collected)
 
+    # ── Парсинг пароля VPNBook ──
     def fetch_vpnbook_password(self):
         relay_proxy = self.pool.get_http_proxy()
         proxies_dict = None
         if relay_proxy:
-            proxies_dict = {"http": f"http://{relay_proxy}", "https": f"http://{relay_proxy}"}
+            proxies_dict = {
+                "http": f"http://{relay_proxy}",
+                "https": f"http://{relay_proxy}",
+            }
         try:
             r = requests.get("https://www.vpnbook.com/freevpn", proxies=proxies_dict, timeout=10)
             if r.status_code == 200:
@@ -291,6 +406,7 @@ class VPNParser:
             logger.warning(f"Не удалось получить пароль VPNBook: {e}")
         return self.vpnbook_password
 
+    # ── Сгенерировать .ovpn конфиг ──
     def generate_ovpn(self, config: dict) -> str:
         password = self.vpnbook_password
         ovpn = f"""client
@@ -340,10 +456,11 @@ class SmartBot:
     def __init__(self):
         self.pool = ProxyPool()
         self.parser = VPNParser(self.pool)
-        self.user_request_count = {}
-        self.user_last_proxy = {}
+        self.user_request_count = {}  # user_id -> count
+        self.user_last_proxy = {}     # user_id -> proxy_str
         self._start_background_tasks()
 
+    # ── Фоновая проверка и обновление прокси ──
     def _start_background_tasks(self):
         def background_loop():
             while True:
@@ -356,17 +473,20 @@ class SmartBot:
                     logger.info(f"📊 Пул: HTTP={stats['http_total']}, SOCKS5={stats['socks5_total']}, Мёртвых={stats['dead']}")
                 except Exception as e:
                     logger.error(f"Ошибка фонового обновления: {e}")
-                time.sleep(600)
+                time.sleep(600)  # каждые 10 минут
+
         t = threading.Thread(target=background_loop, daemon=True)
         t.start()
         logger.info("✅ Фоновый поток запущен")
 
+    # ── Трекинг запросов пользователя ──
     def track_request(self, user_id):
         self.user_request_count[user_id] = self.user_request_count.get(user_id, 0) + 1
 
     def get_request_count(self, user_id):
         return self.user_request_count.get(user_id, 0)
 
+    # ── Главное меню ──
     def main_menu_keyboard(self):
         return InlineKeyboardMarkup([
             [
@@ -386,6 +506,7 @@ class SmartBot:
             ],
         ])
 
+    # ── Получить и проверить HTTP-прокси ──
     def get_verified_http_proxy(self):
         for _ in range(10):
             proxy = self.pool.get_http_proxy()
@@ -396,6 +517,7 @@ class SmartBot:
                 return proxy, ping, ip
         return None, 9999, None
 
+    # ── Получить и проверить SOCKS5-прокси ──
     def get_verified_socks5_proxy(self):
         for _ in range(10):
             proxy = self.pool.get_socks5_proxy()
@@ -408,15 +530,11 @@ class SmartBot:
 
 
 # ─────────────────────────────────────────────
-# 5. ИНИЦИАЛИЗАЦИЯ БОТА
+# 5. ХЭНДЛЕРЫ TELEGRAM
 # ─────────────────────────────────────────────
 
 bot = SmartBot()
 
-
-# ─────────────────────────────────────────────
-# 6. ХЭНДЛЕРЫ
-# ─────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -431,28 +549,38 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📡 *Работаю 24/7, сам обновляю прокси каждые 10 минут*\n\n"
         "Выбери режим:"
     )
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=bot.main_menu_keyboard())
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=bot.main_menu_keyboard()
+    )
 
 
 async def cmd_vpn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_vpn(update, context, update.message)
 
+
 async def cmd_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_http_proxy(update, context, update.message)
+
 
 async def cmd_socks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_socks5_proxy(update, context, update.message)
 
+
 async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_auto(update, context, update.message)
 
+
 async def cmd_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_check_ip(update, context, update.message)
+
 
 async def cmd_rotate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_rotate(update, context, update.message)
 
 
+# ── Callback-хэндлер для inline-кнопок ──
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -473,27 +601,36 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "stats":
         await send_stats(update, context, query.message, edit=True)
     elif data == "menu":
+        kb = bot.main_menu_keyboard()
         await query.message.edit_text(
             "🏠 *Главное меню*\n\nВыбери режим:",
             parse_mode="Markdown",
-            reply_markup=bot.main_menu_keyboard()
+            reply_markup=kb
         )
 
 
+# ── Кнопка «Назад» ──
 def back_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Главное меню", callback_data="menu")]])
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="menu")]
+    ])
 
 
+# ── Отправить HTTP-прокси ──
 async def send_http_proxy(update, context, message, edit=False):
     user_id = update.effective_user.id
     bot.track_request(user_id)
+
     loading_text = "⏳ *Ищу рабочий HTTP-прокси...*\nПроверяю пинг и доступность..."
+
     if edit:
         msg = await message.edit_text(loading_text, parse_mode="Markdown")
     else:
         msg = await message.reply_text(loading_text, parse_mode="Markdown")
 
-    proxy, ping, ip = await asyncio.get_event_loop().run_in_executor(None, bot.get_verified_http_proxy)
+    proxy, ping, ip = await asyncio.get_event_loop().run_in_executor(
+        None, bot.get_verified_http_proxy
+    )
 
     if proxy:
         host, port = proxy.split(":")
@@ -514,22 +651,29 @@ async def send_http_proxy(update, context, message, edit=False):
     else:
         text = (
             "❌ *Живые HTTP-прокси временно недоступны*\n\n"
-            "🔄 Попробуй /rotate для повторной попытки\n"
-            "или /socks для SOCKS5"
+            "🔄 Попробую обновить пул...\n"
+            "Используй /rotate для повторной попытки\n"
+            "или попробуй /socks для SOCKS5"
         )
+
     await msg.edit_text(text, parse_mode="Markdown", reply_markup=back_keyboard())
 
 
+# ── Отправить SOCKS5-прокси ──
 async def send_socks5_proxy(update, context, message, edit=False):
     user_id = update.effective_user.id
     bot.track_request(user_id)
+
     loading_text = "⏳ *Ищу рабочий SOCKS5-прокси...*"
+
     if edit:
         msg = await message.edit_text(loading_text, parse_mode="Markdown")
     else:
         msg = await message.reply_text(loading_text, parse_mode="Markdown")
 
-    proxy, ping, ip = await asyncio.get_event_loop().run_in_executor(None, bot.get_verified_socks5_proxy)
+    proxy, ping, ip = await asyncio.get_event_loop().run_in_executor(
+        None, bot.get_verified_socks5_proxy
+    )
 
     if proxy:
         host, port = proxy.split(":")
@@ -553,13 +697,17 @@ async def send_socks5_proxy(update, context, message, edit=False):
             "Попробуй /proxy для HTTP-прокси\n"
             "или /vpn для OpenVPN"
         )
+
     await msg.edit_text(text, parse_mode="Markdown", reply_markup=back_keyboard())
 
 
+# ── Отправить VPN конфиг ──
 async def send_vpn(update, context, message, edit=False):
     user_id = update.effective_user.id
     bot.track_request(user_id)
+
     loading_text = "⏳ *Генерирую OpenVPN конфиг...*"
+
     if edit:
         msg = await message.edit_text(loading_text, parse_mode="Markdown")
     else:
@@ -568,8 +716,10 @@ async def send_vpn(update, context, message, edit=False):
     config = bot.parser.get_random_vpn_config()
     ovpn_content = bot.parser.generate_ovpn(config)
 
+    # Создаём временный .ovpn файл
     with tempfile.NamedTemporaryFile(
-        mode='w', suffix='.ovpn', delete=False,
+        mode='w', suffix='.ovpn',
+        delete=False,
         prefix=f"vpnbook_{config['server'].split('.')[0]}_"
     ) as f:
         f.write(ovpn_content)
@@ -617,26 +767,37 @@ async def send_vpn(update, context, message, edit=False):
             pass
 
 
+# ── Авто-режим ──
 async def send_auto(update, context, message, edit=False):
     user_id = update.effective_user.id
     req_count = bot.get_request_count(user_id)
     bot.track_request(user_id)
+
     loading_text = "🤖 *Авто-режим: анализирую лучший вариант...*"
+
     if edit:
         msg = await message.edit_text(loading_text, parse_mode="Markdown")
     else:
         msg = await message.reply_text(loading_text, parse_mode="Markdown")
 
+    # Логика умного выбора
     if req_count >= 3:
+        # Пользователь много раз запрашивал — предложить другой тип
         choice = "vpn"
         reason = "🔄 Ты часто запрашивал прокси — попробуем VPN для надёжности"
     else:
-        proxy, ping, ip = await asyncio.get_event_loop().run_in_executor(None, bot.get_verified_http_proxy)
+        # Проверяем HTTP прокси
+        proxy, ping, ip = await asyncio.get_event_loop().run_in_executor(
+            None, bot.get_verified_http_proxy
+        )
         if proxy and ping < 500:
             choice = "http"
             reason = f"⚡ HTTP-прокси с пингом {ping}мс — оптимальный выбор!"
         else:
-            s_proxy, s_ping, s_ip = await asyncio.get_event_loop().run_in_executor(None, bot.get_verified_socks5_proxy)
+            # HTTP не работает — пробуем SOCKS5
+            s_proxy, s_ping, s_ip = await asyncio.get_event_loop().run_in_executor(
+                None, bot.get_verified_socks5_proxy
+            )
             if s_proxy:
                 choice = "socks5"
                 reason = "🔒 HTTP недоступен — переключаюсь на SOCKS5"
@@ -644,7 +805,10 @@ async def send_auto(update, context, message, edit=False):
                 choice = "vpn"
                 reason = "🌍 Прокси недоступны — рекомендую OpenVPN"
 
-    await msg.edit_text(f"🤖 *Авто-режим*\n\n{reason}\n\n⏳ Получаю...", parse_mode="Markdown")
+    await msg.edit_text(
+        f"🤖 *Авто-режим*\n\n{reason}\n\n⏳ Получаю...",
+        parse_mode="Markdown"
+    )
 
     if choice == "http":
         await send_http_proxy(update, context, msg, edit=True)
@@ -654,8 +818,10 @@ async def send_auto(update, context, message, edit=False):
         await send_vpn(update, context, msg, edit=True)
 
 
+# ── Проверить IP пользователя ──
 async def send_check_ip(update, context, message, edit=False):
     loading_text = "🔍 *Проверяю твой текущий IP...*"
+
     if edit:
         msg = await message.edit_text(loading_text, parse_mode="Markdown")
     else:
@@ -679,10 +845,13 @@ async def send_check_ip(update, context, message, edit=False):
     data = await asyncio.get_event_loop().run_in_executor(None, get_ip_info)
 
     if data:
+        flag = "🌐"
         country = data.get("country", "Неизвестно")
+        # Простой маппинг флагов
         flags = {"Russia": "🇷🇺", "United States": "🇺🇸", "Germany": "🇩🇪",
                  "France": "🇫🇷", "United Kingdom": "🇬🇧", "China": "🇨🇳"}
         flag = flags.get(country, "🌐")
+
         text = (
             f"🔍 *Твой текущий IP*\n\n"
             f"📍 *IP:* `{data.get('query', 'N/A')}`\n"
@@ -697,20 +866,26 @@ async def send_check_ip(update, context, message, edit=False):
     await msg.edit_text(text, parse_mode="Markdown", reply_markup=back_keyboard())
 
 
+# ── Ротация прокси ──
 async def send_rotate(update, context, message, edit=False):
     user_id = update.effective_user.id
-    bot.user_request_count[user_id] = 0
+    bot.user_request_count[user_id] = 0  # сброс счётчика
+
     loading_text = "🔄 *Ротация прокси...*\nИщу новый рабочий прокси..."
+
     if edit:
         msg = await message.edit_text(loading_text, parse_mode="Markdown")
     else:
         msg = await message.reply_text(loading_text, parse_mode="Markdown")
 
+    # Помечаем старый прокси мёртвым
     old_proxy = bot.user_last_proxy.get(user_id)
     if old_proxy and "socks5://" not in old_proxy:
         bot.pool.mark_dead(old_proxy)
 
-    proxy, ping, ip = await asyncio.get_event_loop().run_in_executor(None, bot.get_verified_http_proxy)
+    proxy, ping, ip = await asyncio.get_event_loop().run_in_executor(
+        None, bot.get_verified_http_proxy
+    )
 
     if proxy:
         bot.user_last_proxy[user_id] = proxy
@@ -722,11 +897,15 @@ async def send_rotate(update, context, message, edit=False):
             f"Старый прокси помечен как неактивный."
         )
     else:
-        text = "⚠️ *Не удалось найти новый прокси*\n\nПопробуй /vpn для OpenVPN конфига"
+        text = (
+            "⚠️ *Не удалось найти новый прокси*\n\n"
+            "Попробуй /vpn для OpenVPN конфига"
+        )
 
     await msg.edit_text(text, parse_mode="Markdown", reply_markup=back_keyboard())
 
 
+# ── Статистика пула ──
 async def send_stats(update, context, message, edit=False):
     stats = bot.pool.stats()
     text = (
@@ -740,12 +919,14 @@ async def send_stats(update, context, message, edit=False):
         f"🔄 *Обновление:* каждые 10 минут\n"
         f"⏰ *Время:* {datetime.now().strftime('%H:%M:%S')}"
     )
+
     if edit:
         await message.edit_text(text, parse_mode="Markdown", reply_markup=back_keyboard())
     else:
         await message.reply_text(text, parse_mode="Markdown", reply_markup=back_keyboard())
 
 
+# ── Обработка неизвестных сообщений ──
 async def unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🤖 Используй команды:\n"
@@ -761,12 +942,13 @@ async def unknown_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─────────────────────────────────────────────
-# 7. main()
+# 6. main() — ЗАПУСК
 # ─────────────────────────────────────────────
 
 def main():
     logger.info("🚀 Запуск бота...")
 
+    # Первичный парсинг в фоне
     def initial_parse():
         time.sleep(5)
         try:
@@ -780,6 +962,7 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
+    # Регистрация хэндлеров
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("vpn", cmd_vpn))
     app.add_handler(CommandHandler("proxy", cmd_proxy))
